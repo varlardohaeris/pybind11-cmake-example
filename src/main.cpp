@@ -17,7 +17,7 @@ int add(int i, int j) {
   return i + j;
 }
 
-std::vector<int> multi_thread(int input) {
+std::vector<std::vector<int>> multi_thread(int input) {
   // Constructs a thread pool with as many threads as available in the hardware.
   BS::thread_pool pool;
   std::vector<std::future<int>> results;
@@ -30,9 +30,15 @@ std::vector<int> multi_thread(int input) {
   std::vector<int> output;
   for (auto &&result : results)
     output.emplace_back(result.get());
-
-  return output;
+  std::vector<std::vector<int>> res;
+  res.push_back(output);
+  res.push_back(output);
+  res.push_back(output);
+  res.push_back(output);
+  return res;
+  // return output;
 }
+
 py::array_t<uint8_t> create_numpy_array() {
   std::vector<size_t> shape = {3, 4, 5};
   size_t total = 1;
@@ -40,6 +46,22 @@ py::array_t<uint8_t> create_numpy_array() {
     total *= s;
   std::vector<uint8_t> data(total, 1);
   return py::array_t<uint8_t>(shape, data.data());
+}
+
+std::vector<py::array_t<uint8_t>> create_numpy_vector() {
+  std::vector<size_t> shape = {3, 4, 5};
+  size_t total = 1;
+  for (auto s : shape)
+    total *= s;
+  std::vector<uint8_t> data(total, 1);
+  auto x = py::array_t<uint8_t>(shape, data.data());
+  std::vector<py::array_t<uint8_t>> res;
+  res.push_back(x);
+  res.push_back(x);
+  res.push_back(x);
+  res.push_back(x);
+  res.push_back(x);
+  return res;
 }
 
 PYBIND11_MODULE(cmake_example, m) {
@@ -61,8 +83,12 @@ PYBIND11_MODULE(cmake_example, m) {
 
         Some other explanation about the add function.
     )pbdoc");
+
   m.def("create_numpy_array", &create_numpy_array,
         "Create a (3,4,5) NumPy array");
+
+  m.def("create_numpy_vector", &create_numpy_vector,
+        "Create a (3,4,5) NumPy vector");
 
   m.def("subtract", [](int i, int j) { return i - j; }, R"pbdoc(
         Subtract two numbers
