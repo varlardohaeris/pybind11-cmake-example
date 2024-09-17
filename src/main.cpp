@@ -1,16 +1,38 @@
+#include "BS_thread_pool.hpp"
+#include <future>
+#include <iostream>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <thread>
 #include <vector>
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
+namespace py = pybind11;
 int add(int i, int j) {
+  std::thread::id id = std::this_thread::get_id();
+  std::cout << "Thread id " << id << std::endl;
   return i + j;
 }
 
-namespace py = pybind11;
+std::vector<int> multi_thread(int input) {
+  // Constructs a thread pool with as many threads as available in the hardware.
+  BS::thread_pool pool;
+  std::vector<std::future<int>> results;
 
+  for (int i = 0; i < 4; ++i) {
+    results.emplace_back(
+        pool.submit_task([input, i]() -> int { return add(input, i); }));
+  }
+
+  std::vector<int> output;
+  for (auto &&result : results)
+    output.emplace_back(result.get());
+
+  return output;
+}
 py::array_t<uint8_t> create_numpy_array() {
   std::vector<size_t> shape = {3, 4, 5};
   size_t total = 1;
@@ -47,6 +69,8 @@ PYBIND11_MODULE(cmake_example, m) {
 
         Some other explanation about the subtract function.
     )pbdoc");
+  m.def("multi_thread", &multi_thread,
+        "Submit four add function calls to the thread pool");
 
 #ifdef VERSION_INFO
   m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
