@@ -19,8 +19,9 @@ extern "C" {
 
 namespace py = pybind11;
 
-std::vector<py::array_t<uint8_t>> read_frame(const char *filename) {
-
+std::vector<AVFrame *> read_frame() {
+  // std::vector<AVFrame *> read_frame(const char *filename) {
+  const char *filename = "/Users/been/cmake_example/test.mp4";
   AVFormatContext *format_ctx = nullptr;
 
   // 打开视频文件
@@ -82,26 +83,25 @@ std::vector<py::array_t<uint8_t>> read_frame(const char *filename) {
 
   int interval = totalFrames / 8;
   AVFrame *frame = av_frame_alloc();
-  AVPacket packet;
+  AVPacket *packet = av_packet_alloc();
   int frame_count = 0;
 
-  struct SwsContext *sws_ctx = nullptr;
-  std::vector<py::array_t<uint8_t>> numpyFrames;
+  struct SwsContext *sws_ctx =
+      sws_getContext(codec_ctx->width, codec_ctx->height, codec_ctx->pix_fmt,
+                     codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24,
+                     SWS_BICUBIC, nullptr, nullptr, nullptr);
+  std::vector<AVFrame *> frames;
 
   // 读取并解码帧
-  while (av_read_frame(format_ctx, &packet) >= 0) {
-    if (packet.stream_index == video_stream_index) {
-      if (avcodec_send_packet(codec_ctx, &packet) == 0) {
+  while (av_read_frame(format_ctx, packet) >= 0) {
+    if (packet->stream_index == video_stream_index) {
+      if (avcodec_send_packet(codec_ctx, packet) == 0) {
         while (avcodec_receive_frame(codec_ctx, frame) == 0) {
           frame_count++;
           if (frame_count % interval == 0) {
 
             // 如果帧的格式是 yuv420p，则转换为 RGB24
             if (frame->format == AV_PIX_FMT_YUV420P) {
-              sws_ctx = sws_getContext(
-                  frame->width, frame->height, (AVPixelFormat)frame->format,
-                  frame->width, frame->height, AV_PIX_FMT_RGB24, SWS_BICUBIC,
-                  nullptr, nullptr, nullptr);
 
               AVFrame *rgb_frame = av_frame_alloc();
               rgb_frame->format = AV_PIX_FMT_RGB24;
@@ -113,16 +113,11 @@ std::vector<py::array_t<uint8_t>> read_frame(const char *filename) {
               // 转换 yuv420p 到 rgb24
               sws_scale(sws_ctx, frame->data, frame->linesize, 0, frame->height,
                         rgb_frame->data, rgb_frame->linesize);
-              // Create a numpy array directly from rgbFrame->data[0]
-              py::array_t<uint8_t> npArray(
-                  {frame->height, frame->width, 3}, // shape
-                  frame->data[0]                    // pointer to the frame data
-              );
-
-              numpyFrames.push_back(npArray);
+              frames.push_back(rgb_frame);
+              // numpyFrames.push_back(npArray);
               // 释放资源
-              av_freep(&rgb_frame->data[0]);
-              av_frame_free(&rgb_frame);
+              // av_freep(&rgb_frame->data[0]);
+              // av_frame_free(&rgb_frame);
             } else {
               std::cerr << "Frame is not in YUV420P format" << std::endl;
             }
@@ -132,22 +127,50 @@ std::vector<py::array_t<uint8_t>> read_frame(const char *filename) {
         }
       }
     }
-    av_packet_unref(&packet);
+    av_packet_unref(packet);
   }
 
   // 释放资源
-  av_frame_free(&frame);
-  avcodec_free_context(&codec_ctx);
-  avformat_close_input(&format_ctx);
-  if (sws_ctx)
-    sws_freeContext(sws_ctx);
-  return numpyFrames;
+  // av_frame_free(&frame);
+  // av_packet_free(&packet);
+  // avcodec_free_context(&codec_ctx);
+  // avformat_close_input(&format_ctx);
+  // if (sws_ctx) {
+  //   sws_freeContext(sws_ctx);
+  // }
+  return frames;
 }
 
 int add(int i, int j) {
   std::thread::id id = std::this_thread::get_id();
   std::cout << "Thread id " << id << std::endl;
   return i + j;
+}
+
+std::vector<std::vector<py::array_t<uint8_t>>> multi_thread_loader() {
+  std::vector<std::future<std::vector<AVFrame *>>> results;
+  int bs = std::atoi(std::getenv("BATCH_SIZE"));
+  for (int i = 0; i < bs; ++i) {
+    results.push_back(std::async(std::launch::async, read_frame));
+  }
+
+  std::vector<std::vector<py::array_t<uint8_t>>> output;
+
+  for (int i = 0; i < bs; i++) {
+    std::vector<AVFrame *> frames = results[i].get();
+    std::vector<py::array_t<uint8_t>> data(frames.size());
+    for (int j = 0; j < frames.size(); j++) {
+      AVFrame *rgb_frame = frames[j];
+
+      py::array_t<uint8_t> raw_data(
+          {rgb_frame->height, rgb_frame->width, 3}, // shape
+          rgb_frame->data[0]                        // pointer to the frame data
+      );
+      data.push_back(raw_data);
+    }
+  }
+
+  return output;
 }
 
 std::vector<int> multi_thread(int input) {
@@ -206,6 +229,7 @@ PYBIND11_MODULE(cmake_example, m) {
   m.def("multi_thread", &multi_thread,
         "Submit four add function calls to the thread pool");
 
+  m.def("multi_thread_loader", &multi_thread_loader, "multi_thread_loader");
 #ifdef VERSION_INFO
   m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else

@@ -10,3 +10,14 @@ pybind11_add_module(cmake_example src/main.cpp)
 # define (VERSION_INFO) here.
 target_compile_definitions(cmake_example
                            PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
+
+link_directories("/usr/local/Cellar/ffmpeg/7.0.2_1/lib/")
+
+target_link_libraries(cmake_example
+                      PUBLIC avcodec
+                      PUBLIC avformat
+                      PUBLIC avutil
+                      PUBLIC swscale
+                      PUBLIC avresample
+                      PUBLIC pthread
+                    )
