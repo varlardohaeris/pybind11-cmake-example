@@ -18,6 +18,6 @@ target_link_libraries(cmake_example
                       PUBLIC avformat
                       PUBLIC avutil
                       PUBLIC swscale
-                      PUBLIC avresample
+                      PUBLIC swresample
                       PUBLIC pthread
                     )

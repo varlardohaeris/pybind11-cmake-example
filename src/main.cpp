@@ -21,7 +21,9 @@ namespace py = pybind11;
 
 std::vector<AVFrame *> read_frame() {
   // std::vector<AVFrame *> read_frame(const char *filename) {
-  const char *filename = "/Users/been/cmake_example/test.mp4";
+  // const char *filename = "/Users/been/cmake_example/test.mp4";
+  // const char *filename = "/root/repo/cmake_example/test.mp4";
+  const char *filename = std::getenv("MP4_PATH");
   AVFormatContext *format_ctx = nullptr;
 
   // 打开视频文件
@@ -114,6 +116,10 @@ std::vector<AVFrame *> read_frame() {
               sws_scale(sws_ctx, frame->data, frame->linesize, 0, frame->height,
                         rgb_frame->data, rgb_frame->linesize);
               frames.push_back(rgb_frame);
+              if (frames.size() == 8) {
+                printf("done!\n");
+                goto done;
+              }
               // numpyFrames.push_back(npArray);
               // 释放资源
               // av_freep(&rgb_frame->data[0]);
@@ -130,20 +136,23 @@ std::vector<AVFrame *> read_frame() {
     av_packet_unref(packet);
   }
 
-  // 释放资源
-  // av_frame_free(&frame);
-  // av_packet_free(&packet);
-  // avcodec_free_context(&codec_ctx);
-  // avformat_close_input(&format_ctx);
-  // if (sws_ctx) {
-  //   sws_freeContext(sws_ctx);
-  // }
+// 释放资源
+// av_frame_free(&frame);
+// av_packet_free(&packet);
+// avcodec_free_context(&codec_ctx);
+// avformat_close_input(&format_ctx);
+// if (sws_ctx) {
+//   sws_freeContext(sws_ctx);
+// }
+done:
   return frames;
 }
 
 int add(int i, int j) {
   std::thread::id id = std::this_thread::get_id();
   std::cout << "Thread id " << id << std::endl;
+  std::cout << "BATCH size is " << std::getenv("BATCH_SIZE") << std::endl;
+  std::cout << "MP4 path is " << std::getenv("MP4_PATH") << std::endl;
   return i + j;
 }
 
@@ -158,7 +167,7 @@ std::vector<std::vector<py::array_t<uint8_t>>> multi_thread_loader() {
 
   for (int i = 0; i < bs; i++) {
     std::vector<AVFrame *> frames = results[i].get();
-    std::vector<py::array_t<uint8_t>> data(frames.size());
+    std::vector<py::array_t<uint8_t>> data;
     for (int j = 0; j < frames.size(); j++) {
       AVFrame *rgb_frame = frames[j];
 
@@ -166,8 +175,9 @@ std::vector<std::vector<py::array_t<uint8_t>>> multi_thread_loader() {
           {rgb_frame->height, rgb_frame->width, 3}, // shape
           rgb_frame->data[0]                        // pointer to the frame data
       );
-      data.push_back(raw_data);
+      data.emplace_back(raw_data);
     }
+    output.emplace_back(data);
   }
 
   return output;
