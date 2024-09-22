@@ -17,13 +17,14 @@ extern "C" {
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
-namespace py = pybind11;
-
-std::vector<AVFrame *> read_frame() {
+std::vector<AVFrame *> read_frame(const std::string &file,
+                                  const std::vector<int> &indices) {
   // std::vector<AVFrame *> read_frame(const char *filename) {
   // const char *filename = "/Users/been/cmake_example/test.mp4";
   // const char *filename = "/root/repo/cmake_example/test.mp4";
-  const char *filename = std::getenv("MP4_PATH");
+  //  const char *filename = std::getenv("MP4_PATH");
+  const char *filename = file.c_str();
+  std::unordered_set<int> indices_set(indices.begin(), indices.end());
   AVFormatContext *format_ctx = nullptr;
 
   // 打开视频文件
@@ -100,7 +101,7 @@ std::vector<AVFrame *> read_frame() {
       if (avcodec_send_packet(codec_ctx, packet) == 0) {
         while (avcodec_receive_frame(codec_ctx, frame) == 0) {
           frame_count++;
-          if (frame_count % interval == 0) {
+          if (indices_set.find(frame_count - 1) != indices_set.end()) {
 
             // 如果帧的格式是 yuv420p，则转换为 RGB24
             if (frame->format == AV_PIX_FMT_YUV420P) {
@@ -156,11 +157,16 @@ int add(int i, int j) {
   return i + j;
 }
 
-std::vector<std::vector<py::array_t<uint8_t>>> multi_thread_loader() {
+namespace py = pybind11;
+
+std::vector<std::vector<py::array_t<uint8_t>>>
+multi_thread_loader(const std::vector<std::string> &files,
+                    const std::vector<std::vector<int>> &indices) {
   std::vector<std::future<std::vector<AVFrame *>>> results;
   int bs = std::atoi(std::getenv("BATCH_SIZE"));
   for (int i = 0; i < bs; ++i) {
-    results.push_back(std::async(std::launch::async, read_frame));
+    results.push_back(
+        std::async(std::launch::async, read_frame, files[i], indices[i]));
   }
 
   std::vector<std::vector<py::array_t<uint8_t>>> output;
